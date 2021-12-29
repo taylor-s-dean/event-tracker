@@ -356,6 +356,58 @@ func (s *server) ServeWithAutocert() {
 	os.Exit(0)
 }
 
+func (s *server) writeToDB(ctx context.Context, event *Event, dryRun bool) error {
+	metadata, err := json.Marshal(event.Metadata)
+	if err != nil {
+		return fmt.Errorf("failed to marshal metadata to []byte")
+	}
+
+	if !dryRun {
+		_, err := s.db.ExecContext(ctx, `
+INSERT INTO events (
+	id,
+	event_type,
+	start_time,
+	end_time,
+	notes,
+	metadata
+) VALUES (
+	?,
+	?,
+	?,
+	?,
+	?,
+	?
+)
+`, event.ID, event.EventType, event.StartTime, event.EndTime, event.Notes, metadata)
+		if err != nil {
+			return err
+		}
+
+	} else {
+		endTimeBytes, _ := event.EndTime.MarshalJSON()
+
+		log.Printf(`
+INSERT INTO events (
+	id,
+	event_type,
+	start_time,
+	end_time,
+	notes,
+	metadata
+) VALUES (
+	%d,
+	'%s',
+	'%s',
+	'%s',
+	'%s',
+	'%s'
+)
+`, event.ID, event.EventType, event.StartTime.Format(time.RFC3339), string(endTimeBytes), event.Notes, event.Metadata)
+	}
+
+	return nil
+}
 func init() {
 	rand.Seed(time.Now().Unix())
 }
