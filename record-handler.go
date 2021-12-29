@@ -1,10 +1,8 @@
 package main
 
 import (
-	"database/sql"
 	"encoding/json"
 	"fmt"
-	"math/rand"
 	"net/http"
 	"time"
 )
@@ -13,7 +11,7 @@ type RecordData struct {
 	EventType string      `json:"event_type"`
 	Notes     string      `json:"notes"`
 	StartTime time.Time   `json:"start_time"`
-	EndTime   time.Time   `json:"end_time"`
+	EndTime   NullTime    `json:"end_time"`
 	Metadata  interface{} `json:"metadata"`
 }
 
@@ -55,38 +53,11 @@ func (s *server) RecordHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	endTime := sql.NullTime{}
-	if !request.EndTime.IsZero() {
-		endTime.Time = request.EndTime
-		endTime.Valid = true
-	}
-
-	if request.StartTime.IsZero() {
-		request.StartTime = time.Now()
-	}
-
-	id := rand.Int63()
-	_, err = s.db.ExecContext(r.Context(), `
-INSERT INTO events (
-	id,
-	event_type,
-	start_time,
-	end_time,
-	notes,
-	metadata
-) VALUES (
-	?,
-	?,
-	?,
-	?,
-	?,
-	?
-)
-`, id, request.EventType, request.StartTime, endTime, request.Notes, string(metadataBytes))
+	event, code, err := s.validateAndWriteToDB(r.Context(), request.EventType, request.StartTime, request.EndTime, request.Notes, string(metadataBytes), false)
 	if err != nil {
 		respondWithJSON(
 			w,
-			http.StatusInternalServerError,
+			code,
 			err,
 			"failed to write to database",
 			nil,
@@ -94,5 +65,5 @@ INSERT INTO events (
 		return
 	}
 
-	respondWithJSON(w, http.StatusOK, err, "", RecordResponse{ID: id, Request: &request})
+	respondWithJSON(w, http.StatusOK, err, "", event)
 }

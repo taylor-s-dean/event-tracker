@@ -10,6 +10,7 @@ import (
 	"log"
 	"math/rand"
 	"net/http"
+	"net/http/httputil"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -34,8 +35,9 @@ var (
 )
 
 const (
-	contentTypeHeader = "Content-Type"
-	applicationJSON   = "application/json"
+	contentTypeHeader         = "Content-Type"
+	applicationJSON           = "application/json"
+	applicationFormURLEncoded = "application/x-www-form-urlencoded"
 )
 
 type Response struct {
@@ -46,16 +48,17 @@ type Response struct {
 }
 
 type server struct {
-	db           *sql.DB
-	DBUser       *string
-	DBPassword   *string
-	DBName       *string
-	DBPort       *int
-	HTTPPort     *int
-	HTTPSPort    *int
-	Domain       *string
-	GitHubSecret *string
-	router       *mux.Router
+	db                 *sql.DB
+	DBUser             *string
+	DBPassword         *string
+	DBName             *string
+	DBPort             *int
+	HTTPPort           *int
+	HTTPSPort          *int
+	Domain             *string
+	GitHubSecret       *string
+	SlackSigningSecret *string
+	router             *mux.Router
 }
 
 func respondWithJSON(w http.ResponseWriter,
@@ -108,11 +111,24 @@ CREATE TABLE IF NOT EXISTS events (
 	}
 }
 
+func verboseLoggingMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if req, err := httputil.DumpRequest(r, true); err == nil {
+			log.Println(string(req))
+		} else {
+			log.Printf("Failed to dump request. error: %s\n", err.Error())
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func combinedLogginMiddleware(next http.Handler) http.Handler {
+	return handlers.CombinedLoggingHandler(os.Stdout, next)
+}
+
 func (s *server) initAPI() {
 	s.router = mux.NewRouter()
-	s.router.Use(func(next http.Handler) http.Handler {
-		return handlers.CombinedLoggingHandler(os.Stdout, next)
-	})
+	s.router.Use(combinedLogginMiddleware)
 
 	s.router.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		// This is used by the load balancer health check.
@@ -127,6 +143,7 @@ func (s *server) initAPI() {
 		Methods(http.MethodPost).
 		Headers(contentTypeHeader, applicationJSON)
 
+	// GitHub Webhook handler
 	githubValidator := GitHubWebHookValidator{Secret: []byte(*s.GitHubSecret)}
 	githubAPI := apiV0.PathPrefix("/github").Subrouter()
 	githubAPI.Use(githubValidator.Middleware)
@@ -140,6 +157,19 @@ func (s *server) initAPI() {
 	}).
 		Methods(http.MethodPost).
 		Headers(contentTypeHeader, applicationJSON)
+
+	// Slack slash-command handler
+	slackValidator := SlackRequestValidator{Secret: []byte(*s.SlackSigningSecret)}
+	slackAPI := apiV0.PathPrefix("/slack").Subrouter()
+	slackAPI.Use(verboseLoggingMiddleware)
+	slackAPI.Use(slackValidator.Middleware)
+	slackAPI.HandleFunc("/command", s.SlackCommandHandler).
+		Methods(http.MethodPost).
+		Headers(contentTypeHeader, applicationFormURLEncoded)
+	slackAPI.HandleFunc("/interaction", s.SlackInteractionHandler).
+		Methods(http.MethodPost).
+		Headers(contentTypeHeader, applicationFormURLEncoded)
+
 }
 
 func (s *server) ServeHTTPOnly() {
@@ -337,6 +367,7 @@ func main() {
 	s.DBPassword = flag.String("db-password", "password", "password for database access")
 	s.DBName = flag.String("db-name", "test", "name of database")
 	s.GitHubSecret = flag.String("github-secret", "secret", "github webhook secret")
+	s.SlackSigningSecret = flag.String("slack-signing-secret", "secret", "slack signing secret")
 	s.DBPort = flag.Int("db-port", 3306, "database port number")
 	s.HTTPPort = flag.Int("http-port", 80, "port on which HTTP should be served")
 	s.HTTPSPort = flag.Int("https-port", 443, "port on which HTTPS should be served")
