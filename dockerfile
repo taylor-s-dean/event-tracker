@@ -26,7 +26,8 @@ CMD sleep 10 && ./${APP_NAME} \
     --db-name ${DB_NAME} \
     --http-port ${HTTP_PORT} \
     --https-port ${HTTPS_PORT} \
-    --github-secret ${GITHUB_SECRET}
+    --github-secret ${GITHUB_SECRET} \
+    --slack-signing-secret ${SLACK_SIGNING_SECRET}
 
 EXPOSE ${HTTPS_PORT}
 EXPOSE ${HTTP_PORT}

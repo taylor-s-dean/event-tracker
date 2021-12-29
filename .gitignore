@@ -1,3 +1,6 @@
 event-tracker
 events.sql
 log-incident.sh
+grafana-annotations.sql
+update-grafana-annotations.sh
+grafana-annotation-insert.sql
