@@ -14,6 +14,7 @@ type Event struct {
 	StartTime time.Time   `json:"start_time"`
 	EndTime   NullTime    `json:"end_time"`
 	Metadata  interface{} `json:"metadata"`
+	DryRun    bool        `json:"-"`
 }
 
 func (d *Event) ValidateAndRectify() error {

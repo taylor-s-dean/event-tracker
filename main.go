@@ -14,11 +14,13 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	"golang.org/x/crypto/acme/autocert"
+	"makeshift.dev/event-tracker/slack"
 
 	// _ "github.com/mattn/go-sqlite3"
 	_ "github.com/go-sql-driver/mysql"
@@ -59,6 +61,7 @@ type server struct {
 	GitHubSecret       *string
 	SlackSigningSecret *string
 	router             *mux.Router
+	SlackClient        *slack.Client
 }
 
 func respondWithJSON(w http.ResponseWriter,
@@ -356,13 +359,13 @@ func (s *server) ServeWithAutocert() {
 	os.Exit(0)
 }
 
-func (s *server) writeToDB(ctx context.Context, event *Event, dryRun bool) error {
+func (s *server) writeToDB(ctx context.Context, event *Event) error {
 	metadata, err := json.Marshal(event.Metadata)
 	if err != nil {
 		return fmt.Errorf("failed to marshal metadata to []byte")
 	}
 
-	if !dryRun {
+	if !event.DryRun {
 		_, err := s.db.ExecContext(ctx, `
 INSERT INTO events (
 	id,
@@ -386,6 +389,7 @@ INSERT INTO events (
 
 	} else {
 		endTimeBytes, _ := event.EndTime.MarshalJSON()
+		endTime, _ := strconv.Unquote(string(endTimeBytes))
 
 		log.Printf(`
 INSERT INTO events (
@@ -403,7 +407,7 @@ INSERT INTO events (
 	'%s',
 	'%s'
 )
-`, event.ID, event.EventType, event.StartTime.Format(time.RFC3339), string(endTimeBytes), event.Notes, event.Metadata)
+`, event.ID, event.EventType, event.StartTime.Format(time.RFC3339), endTime, event.Notes, metadata)
 	}
 
 	return nil
@@ -420,11 +424,14 @@ func main() {
 	s.DBName = flag.String("db-name", "test", "name of database")
 	s.GitHubSecret = flag.String("github-secret", "secret", "github webhook secret")
 	s.SlackSigningSecret = flag.String("slack-signing-secret", "secret", "slack signing secret")
+	slackOauthToken := flag.String("slack-oauth-token", "secret", "slack oath token")
 	s.DBPort = flag.Int("db-port", 3306, "database port number")
 	s.HTTPPort = flag.Int("http-port", 80, "port on which HTTP should be served")
 	s.HTTPSPort = flag.Int("https-port", 443, "port on which HTTPS should be served")
 	useAutocert := flag.String("use-autocert", "false", "specify \"true\" or \"false\" to serve HTTPS using autocert")
 	flag.Parse()
+
+	s.SlackClient = slack.New(*slackOauthToken)
 
 	if *useAutocert == "true" {
 		s.ServeWithAutocert()

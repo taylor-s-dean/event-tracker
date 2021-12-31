@@ -6,18 +6,18 @@ import (
 )
 
 func (s *server) RecordHandler(w http.ResponseWriter, r *http.Request) {
-	request := Event{}
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+	event := Event{}
+	if err := json.NewDecoder(r.Body).Decode(&event); err != nil {
 		respondWithJSON(w, http.StatusBadRequest, err, "", nil)
 		return
 	}
 
-	if err := request.ValidateAndRectify(); err != nil {
+	if err := event.ValidateAndRectify(); err != nil {
 		respondWithJSON(w, http.StatusBadRequest, err, "", nil)
 		return
 	}
 
-	err := s.writeToDB(r.Context(), &request, false)
+	err := s.writeToDB(r.Context(), &event)
 	if err != nil {
 		respondWithJSON(
 			w,
@@ -29,5 +29,5 @@ func (s *server) RecordHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	respondWithJSON(w, http.StatusOK, err, "", request)
+	respondWithJSON(w, http.StatusOK, err, "", event)
 }

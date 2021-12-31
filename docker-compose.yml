@@ -35,6 +35,7 @@ services:
       HTTPS_PORT: 443
       GITHUB_SECRET: "secret"
       SLACK_SIGNING_SECRET: "secret"
+      SLACK_OAUTH_TOKEN: "secret"
     ports:
       - "443:443"
       - "80:80"
