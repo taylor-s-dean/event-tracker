@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gorilla/schema"
+	"makeshift.dev/event-tracker/slack"
 )
 
 var (
@@ -102,17 +103,36 @@ var (
 			"type": "input",
 			"element": {
 				"type": "plain_text_input",
-				"action_id": "metadata-action"
+				"action_id": "postmortem-action"
 			},
 			"label": {
 				"type": "plain_text",
-				"text": "Arbitrary Valid JSON Metadata",
+				"text": "Link to Postmortem",
 				"emoji": true
 			}
 		},
 		{
 			"type": "actions",
 			"elements": [
+				{
+					"type": "checkboxes",
+					"options": [
+						{
+							"text": {
+								"type": "plain_text",
+								"text": "Do this for real",
+								"emoji": true
+							},
+							"description": {
+								"type": "plain_text",
+								"text": "Leave unchecked to test this action.",
+								"emoji": true
+							},
+							"value": "value-0"
+						}
+					],
+					"action_id": "checkbox-action"
+				},
 				{
 					"type": "button",
 					"text": {
@@ -133,14 +153,15 @@ var (
 // SlackCommandData is the request body.
 type SlackCommandData struct {
 	Command string `schema:"command"`
+	UserID  string `schema:"user_id"`
 }
 
-func slackCommandResponse(w http.ResponseWriter, data *SlackCommandData) {
+func slackCommandResponse(w http.ResponseWriter, data *SlackCommandData, location *time.Location) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 
 	// Determine the start/end date/time for the message template.
-	now := time.Now()
+	now := time.Now().In(location)
 	startDate := now.Format("2006-01-02")
 	endDate := now.Add(-24 * 365 * time.Hour).Format("2006-01-02")
 	startEndTime := now.Format("15:04")
@@ -168,6 +189,7 @@ func slackCommandResponse(w http.ResponseWriter, data *SlackCommandData) {
 }
 
 func (s *server) SlackCommandHandler(w http.ResponseWriter, r *http.Request) {
+
 	// We always have to parse the form before accessing the data.
 	if err := r.ParseForm(); err != nil {
 		respondWithJSON(w, http.StatusBadRequest, err, "", nil)
@@ -183,6 +205,15 @@ func (s *server) SlackCommandHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	slackCommandResponse(w, &request)
+	usersInfoRequest := slack.NewUsersInfoRequest(request.UserID)
+	usersInfoResponse, err := s.SlackClient.UsersInfo(usersInfoRequest)
+	if err != nil {
+		respondWithJSON(w, http.StatusInternalServerError, err, "", nil)
+		return
+	}
+
+	location := time.FixedZone("", usersInfoResponse.User.TZOffset)
+	slackCommandResponse(w, &request, location)
+
 	return
 }
