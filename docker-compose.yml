@@ -36,6 +36,8 @@ services:
       GITHUB_SECRET: "secret"
       SLACK_SIGNING_SECRET: "secret"
       SLACK_OAUTH_TOKEN: "secret"
+      SLACK_LOG_CHANNEL: "channel"
+      TIME_ZONE: "America/New_York"
     ports:
       - "443:443"
       - "80:80"
