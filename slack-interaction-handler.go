@@ -114,10 +114,7 @@ func (request *SlackInteractionData) ParseState(tzOffsetSeconds int) (*Event, er
 					return nil, fmt.Errorf("Bad description")
 				}
 			case "postmortem-action":
-				postmortem, ok = value["value"].(string)
-				if !ok {
-					return nil, fmt.Errorf("Bad postmortem")
-				}
+				postmortem, _ = value["value"].(string)
 			case "start-date-action":
 				startDate, ok = value["selected_date"].(string)
 				if !ok {
@@ -185,11 +182,6 @@ func (request *SlackInteractionData) ParseState(tzOffsetSeconds int) (*Event, er
 
 	event.Metadata = map[string]string{"postmortem": postmortem}
 
-	// Perform some final data clean up.
-	if err := event.ValidateAndRectify(); err != nil {
-		return nil, err
-	}
-
 	return &event, nil
 }
 
@@ -232,7 +224,7 @@ func (s *server) SlackInteractionHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Add a row to the DB.
-	if err := s.writeToDB(r.Context(), event); err != nil {
+	if err := s.writeToDBAndLog(r.Context(), event); err != nil {
 		respondWithJSON(
 			w,
 			http.StatusInternalServerError,

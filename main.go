@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"database/sql"
@@ -62,6 +63,8 @@ type server struct {
 	SlackSigningSecret *string
 	router             *mux.Router
 	SlackClient        *slack.Client
+	SlackLogChannel    *string
+	Location           *time.Location
 }
 
 func respondWithJSON(w http.ResponseWriter,
@@ -106,6 +109,7 @@ CREATE TABLE IF NOT EXISTS events (
 	end_time TIMESTAMP NULL DEFAULT NULL,
 	notes TEXT DEFAULT NULL,
 	metadata JSON DEFAULT NULL,
+	insert_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 	PRIMARY KEY (id)
 )
 `
@@ -359,7 +363,11 @@ func (s *server) ServeWithAutocert() {
 	os.Exit(0)
 }
 
-func (s *server) writeToDB(ctx context.Context, event *Event) error {
+func (s *server) writeToDBAndLog(ctx context.Context, event *Event) error {
+	if err := event.ValidateAndRectify(); err != nil {
+		return err
+	}
+
 	metadata, err := json.Marshal(event.Metadata)
 	if err != nil {
 		return fmt.Errorf("failed to marshal metadata to []byte")
@@ -386,7 +394,9 @@ INSERT INTO events (
 		if err != nil {
 			return err
 		}
-
+		if err := s.logToSlackChannel(event); err != nil {
+			return err
+		}
 	} else {
 		endTimeBytes, _ := event.EndTime.MarshalJSON()
 		endTime, _ := strconv.Unquote(string(endTimeBytes))
@@ -412,6 +422,45 @@ INSERT INTO events (
 
 	return nil
 }
+
+func (s *server) logToSlackChannel(event *Event) error {
+	if len(*s.SlackLogChannel) == 0 {
+		return nil
+	}
+
+	// So this is kind of bizzar.
+	// Templating fails with an error like:
+	// template: :3:26: executing "" at <.Metadata.repository.full_name>: can't evaluate field repository in type interface {}
+	// if the Metadata field is a struct!!
+	// Make it an interface, and it just works.
+	// idk dude.
+	metadataBytes, err := json.Marshal(event.Metadata)
+	if err != nil {
+		log.Printf("Failed to log event to Slack channel with error: %s\n", err.Error())
+		return err
+	}
+
+	metadata := new(interface{})
+	if err := json.Unmarshal(metadataBytes, metadata); err != nil {
+		log.Fatal(err.Error())
+	}
+	event.Metadata = metadata
+
+	request := slack.NewChatPostMessageRequest(*s.SlackLogChannel)
+	buffer := &bytes.Buffer{}
+	if err := slackTemplate.Execute(buffer, event); err != nil {
+		log.Printf("Failed to log event to Slack channel with error: %s\n", err.Error())
+		return err
+	}
+
+	request.Text = buffer.String()
+	if _, err := s.SlackClient.ChatPostMessage(request); err != nil {
+		log.Printf("Failed to log event to Slack channel with error: %s\n", err.Error())
+		return err
+	}
+
+	return nil
+}
 func init() {
 	rand.Seed(time.Now().Unix())
 }
@@ -425,12 +474,20 @@ func main() {
 	s.GitHubSecret = flag.String("github-secret", "secret", "github webhook secret")
 	s.SlackSigningSecret = flag.String("slack-signing-secret", "secret", "slack signing secret")
 	slackOauthToken := flag.String("slack-oauth-token", "secret", "slack oath token")
+	s.SlackLogChannel = flag.String("slack-log-channel", "channel", "slack log channel")
 	s.DBPort = flag.Int("db-port", 3306, "database port number")
 	s.HTTPPort = flag.Int("http-port", 80, "port on which HTTP should be served")
 	s.HTTPSPort = flag.Int("https-port", 443, "port on which HTTPS should be served")
 	useAutocert := flag.String("use-autocert", "false", "specify \"true\" or \"false\" to serve HTTPS using autocert")
+	timeZone := flag.String("time-zone", "America/New_York", "time zone to use when logging to various sources")
 	flag.Parse()
 
+	location, err := time.LoadLocation(*timeZone)
+	if err != nil {
+		log.Fatalf("failed to load time zone with error: %s", err.Error())
+	}
+
+	s.Location = location
 	s.SlackClient = slack.New(*slackOauthToken)
 
 	if *useAutocert == "true" {

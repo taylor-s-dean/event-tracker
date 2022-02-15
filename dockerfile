@@ -10,6 +10,10 @@ ENV DB_NAME test
 ENV HTTP_PORT 80
 ENV HTTPS_PORT 443
 ENV GITHUB_SECRET secret
+ENV SLACK_SIGNING_SECRET secret
+ENV SLACK_OAUTH_TOKEN secret
+ENV SLACK_LOG_CHANNEL channel
+ENV TIME_ZONE UTC
 
 WORKDIR /go/src/${APP_NAME}
 COPY . .
@@ -28,7 +32,9 @@ CMD sleep 10 && ./${APP_NAME} \
     --https-port ${HTTPS_PORT} \
     --github-secret ${GITHUB_SECRET} \
     --slack-signing-secret ${SLACK_SIGNING_SECRET} \
-    --slack-oauth-token ${SLACK_OAUTH_TOKEN}
+    --slack-oauth-token ${SLACK_OAUTH_TOKEN} \
+    --slack-log-channel ${SLACK_LOG_CHANNEL} \
+    --time-zone ${TIME_ZONE}
 
 EXPOSE ${HTTPS_PORT}
 EXPOSE ${HTTP_PORT}

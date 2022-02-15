@@ -12,12 +12,7 @@ func (s *server) RecordHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := event.ValidateAndRectify(); err != nil {
-		respondWithJSON(w, http.StatusBadRequest, err, "", nil)
-		return
-	}
-
-	err := s.writeToDB(r.Context(), &event)
+	err := s.writeToDBAndLog(r.Context(), &event)
 	if err != nil {
 		respondWithJSON(
 			w,
