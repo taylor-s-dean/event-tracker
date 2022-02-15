@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"math/rand"
 	"time"
@@ -35,4 +36,9 @@ func (d *Event) ValidateAndRectify() error {
 	d.ID = rand.Int63()
 
 	return nil
+}
+
+func (d *Event) MarshalString() (string, error) {
+	b, err := json.MarshalIndent(d, "", " ")
+	return string(b), err
 }

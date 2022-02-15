@@ -13,7 +13,11 @@ type PullRequestData struct {
 		URL       string    `json:"html_url"`
 		Merged    bool      `json:"merged"`
 		Title     string    `json:"title"`
+		Body      string    `json:"body"`
 		UpdatedAt time.Time `json:"updated_at"`
+		User      struct {
+			Login string `json:"login"`
+		} `json:"user"`
 	} `json:"pull_request"`
 	Repository struct {
 		FullName string `json:"full_name"`

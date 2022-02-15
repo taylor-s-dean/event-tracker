@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"database/sql"
@@ -108,6 +109,7 @@ CREATE TABLE IF NOT EXISTS events (
 	end_time TIMESTAMP NULL DEFAULT NULL,
 	notes TEXT DEFAULT NULL,
 	metadata JSON DEFAULT NULL,
+	insert_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 	PRIMARY KEY (id)
 )
 `
@@ -426,15 +428,34 @@ func (s *server) logToSlackChannel(event *Event) error {
 		return nil
 	}
 
-	eventBytes, err := json.MarshalIndent(event, "", "  ")
+	// So this is kind of bizzar.
+	// Templating fails with an error like:
+	// template: :3:26: executing "" at <.Metadata.repository.full_name>: can't evaluate field repository in type interface {}
+	// if the Metadata field is a struct!!
+	// Make it an interface, and it just works.
+	// idk dude.
+	metadataBytes, err := json.Marshal(event.Metadata)
 	if err != nil {
+		log.Printf("Failed to log event to Slack channel with error: %s\n", err.Error())
 		return err
 	}
 
+	metadata := new(interface{})
+	if err := json.Unmarshal(metadataBytes, metadata); err != nil {
+		log.Fatal(err.Error())
+	}
+	event.Metadata = metadata
+
 	request := slack.NewChatPostMessageRequest(*s.SlackLogChannel)
-	request.Text = fmt.Sprintf("```%s```", string(eventBytes))
+	buffer := &bytes.Buffer{}
+	if err := slackTemplate.Execute(buffer, event); err != nil {
+		log.Printf("Failed to log event to Slack channel with error: %s\n", err.Error())
+		return err
+	}
+
+	request.Text = buffer.String()
 	if _, err := s.SlackClient.ChatPostMessage(request); err != nil {
-		log.Printf("Failed to log event to Slack channel with error: %s", err.Error())
+		log.Printf("Failed to log event to Slack channel with error: %s\n", err.Error())
 		return err
 	}
 
