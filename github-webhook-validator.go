@@ -21,6 +21,7 @@ const (
 	githubDeliverHeader   = "X-GitHub-Delivery"
 
 	pullRequestEvent = "pull_request"
+	pushEvent        = "push"
 	pingEvent        = "ping"
 )
 
@@ -28,6 +29,7 @@ var (
 	validEvents = map[string]bool{
 		pullRequestEvent: true,
 		pingEvent:        true,
+		pushEvent:        true,
 	}
 )
 

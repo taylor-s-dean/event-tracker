@@ -158,6 +158,11 @@ func (s *server) initAPI() {
 		Methods(http.MethodPost).
 		Headers(contentTypeHeader, applicationJSON).
 		Headers(githubEventHeader, pullRequestEvent)
+	githubAPI.HandleFunc("", s.PushHandler).
+		Methods(http.MethodPost).
+		Headers(contentTypeHeader, applicationJSON).
+		Headers(githubEventHeader, pushEvent)
+
 	githubAPI.HandleFunc("", func(w http.ResponseWriter, r *http.Request) {
 		eventType := r.Header.Get(githubEventHeader)
 		respondWithJSON(w, http.StatusOK, nil, fmt.Sprintf("GitHub event '%s' not yet handled", eventType), nil)
